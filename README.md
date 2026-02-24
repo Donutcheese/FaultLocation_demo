@@ -8,9 +8,14 @@
   - 线路号与长度、两端站点（`line`）
   - 双端到达时间与波速（`measurement`）
 - 一个简化的双端行波测距定位计算：
-  - \(t_A = d/v\)
-  - \(t_B = (L-d)/v\)
-  - \(d = (L + v \cdot (t_A - t_B))/2\)
+
+$$
+d = \dfrac{L + v \cdot (t_A - t_B)}{2}
+$$
+
+其中：
+- $t_A = \dfrac{d}{v}$
+- $t_B = \dfrac{L - d}{v}$
 
 ## 运行方式（Windows / PowerShell）
 
