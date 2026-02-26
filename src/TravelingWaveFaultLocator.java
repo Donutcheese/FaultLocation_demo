@@ -69,24 +69,23 @@ public class TravelingWaveFaultLocator {
      * 针对指定 ID 的测距记录执行故障定位并打印结果。
      *
      * 定位核心公式（对称双端行波测距、简化推导）：
-     *   tA = d / v
-     *   tB = (L - d) / v
-     *   => d = (L + v * (tA - tB)) / 2
+     * tA = d / v
+     * tB = (L - d) / v
+     * => d = (L + v * (tA - tB)) / 2
      * 其中：
-     *   - L 为整条线路长度；
-     *   - d 为故障到 A 端的距离；
-     *   - v 为行波在该线路上的传播速度。
+     * - L 为整条线路长度；
+     * - d 为故障到 A 端的距离；
+     * - v 为行波在该线路上的传播速度。
      */
     public static void locateById(Connection conn, long measId) throws SQLException {
-        String sql =
-                "SELECT m.id AS meas_id, m.t_a_ms, m.t_b_ms, m.v_km_per_ms, m.created_at, " +
-                        "l.line_no, l.length_km, " +
-                        "sa.name AS station_a, sb.name AS station_b " +
-                        "FROM measurement m " +
-                        "JOIN line l ON l.id = m.line_id " +
-                        "JOIN station sa ON sa.id = m.station_a_id " +
-                        "JOIN station sb ON sb.id = m.station_b_id " +
-                        "WHERE m.id = ?;";
+        String sql = "SELECT m.id AS meas_id, m.t_a_ms, m.t_b_ms, m.v_km_per_ms, m.created_at, " +
+                "l.line_no, l.length_km, " +
+                "sa.name AS station_a, sb.name AS station_b " +
+                "FROM measurement m " +
+                "JOIN line l ON l.id = m.line_id " +
+                "JOIN station sa ON sa.id = m.station_a_id " +
+                "JOIN station sb ON sb.id = m.station_b_id " +
+                "WHERE m.id = ?;";
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, measId);
@@ -106,7 +105,7 @@ public class TravelingWaveFaultLocator {
                 String stb = rs.getString("station_b");
 
                 // 双端行波测距（简化演示）
-                // tA = d/v, tB = (L-d)/v  =>  d = (L + v*(tA - tB))/2
+                // tA = d/v, tB = (L-d)/v => d = (L + v*(tA - tB))/2
                 double dFromA = (L + v * (tA - tB)) / 2.0;
                 // 出于鲁棒性考虑，把结果限定在 [0, L] 之间，避免由于噪声导致“超出线路范围”
                 dFromA = clamp(dFromA, 0.0, L);
@@ -116,10 +115,12 @@ public class TravelingWaveFaultLocator {
                 System.out.println("=== Traveling-Wave Double-End Fault Location (Demo) ===");
                 System.out.println("measurement.id = " + rs.getLong("meas_id"));
                 System.out.println("created_at     = " + rs.getString("created_at"));
-                System.out.println("line           = " + lineNo + " (" + sta + " <-> " + stb + "), L=" + fmt(L) + " km");
+                System.out
+                        .println("line           = " + lineNo + " (" + sta + " <-> " + stb + "), L=" + fmt(L) + " km");
                 System.out.println("v              = " + fmt(v) + " km/ms");
                 System.out.println("tA/tB          = " + fmt(tA) + " ms / " + fmt(tB) + " ms");
-                System.out.println("fault location = " + fmt(dFromA) + " km from " + sta + "  (" + fmt(dFromB) + " km from " + stb + ")");
+                System.out.println("fault location = " + fmt(dFromA) + " km from " + sta + "  (" + fmt(dFromB)
+                        + " km from " + stb + ")");
             }
         }
     }
@@ -130,12 +131,12 @@ public class TravelingWaveFaultLocator {
      * 向 measurement 表写入一条双端测距记录。
      */
     private static long insertMeasurement(Connection conn, long lineId, long stationAId, long stationBId,
-                                          double tAms, double tBms, double vKmPerMs) throws SQLException {
+            double tAms, double tBms, double vKmPerMs) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO measurement(line_id, station_a_id, station_b_id, t_a_ms, t_b_ms, v_km_per_ms, created_at) " +
+                "INSERT INTO measurement(line_id, station_a_id, station_b_id, t_a_ms, t_b_ms, v_km_per_ms, created_at) "
+                        +
                         "VALUES(?,?,?,?,?,?,?);",
-                Statement.RETURN_GENERATED_KEYS
-        )) {
+                Statement.RETURN_GENERATED_KEYS)) {
             ps.setLong(1, lineId);
             ps.setLong(2, stationAId);
             ps.setLong(3, stationBId);
@@ -156,7 +157,7 @@ public class TravelingWaveFaultLocator {
      */
     private static Long queryLong(Connection conn, String sql) throws SQLException {
         try (Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery(sql)) {
+                ResultSet rs = st.executeQuery(sql)) {
             if (!rs.next()) {
                 return null;
             }
@@ -176,9 +177,10 @@ public class TravelingWaveFaultLocator {
      * 简单的限幅函数，用于把结果约束在 [min, max] 区间内。
      */
     private static double clamp(double x, double min, double max) {
-        if (x < min) return min;
-        if (x > max) return max;
+        if (x < min)
+            return min;
+        if (x > max)
+            return max;
         return x;
     }
 }
-
