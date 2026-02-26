@@ -46,3 +46,7 @@ run.cmd
 - `simulate`：只插入一条样例测距记录（演示噪声）
 - `locate`：对最新一条测距记录做定位并打印
 
+## 运行结果
+<img width="1477" height="750" alt="image" src="https://github.com/user-attachments/assets/d1c8a703-0aad-4a09-81c2-686c8667d8b2" />
+
+
