@@ -1,6 +1,9 @@
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.util.Locale;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.Files;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 
 // 说明：本 Demo 中所有类都放在“默认包”下（即未显式声明 package），
 // 在这种情况下可以在 Main 中直接使用 DatabaseInitializer / GridTopologyRepository / TravelingWaveFaultLocator
@@ -9,59 +12,111 @@ import java.util.Locale;
 /**
  * 程序入口类（Main）。
  *
- * 设计思路：
- * - Main 只做三件事：解析命令行参数、建立数据库连接、调用各个“业务模块”；
- * - 具体的数据库建表、拓扑数据维护、行波测距算法，都拆分到独立的类中实现；
- * - 这样可以让每个类的职责更单一，Main 本身也更加简洁、易读、易扩展。
- *
- * 可用命令：
- *   - init     : 仅初始化表结构；
- *   - seed     : 写入一个小型电网拓扑（3 个站、2 条线路），只在空库时写入一次；
- *   - simulate : 在示例线路 L1001 上“虚构”一次故障，生成一条双端测距记录；
- *   - locate   : 对最新一条测距记录执行双端行波故障定位；
- *   - demo     : 一键完成 seed + simulate + locate（默认命令）。
+ * 当前版本：
+ * - 在代码中通过文件名指定一个 .all 文件；
+ * - 只解析并打印这一份 .all 的概要信息（与最初 C++ 示例等价）；
+ * - 随后对该文件执行单端测距算法。
  */
 public class Main {
-    private static final String DB_URL = "jdbc:sqlite:demo.db";
+    /**
+     * .all 文件所在的根目录（相对于工程根目录）。
+     * 目前所有示例数据都在 src/data 下。
+     */
+    private static final Path DATA_ROOT = Paths.get("src", "data");
+
+    /**
+     * 输入需要的.all文件名
+     * 
+     */
+    private static final String TARGET_FILE_NAME = "140423231753杨马线M0053.all";
 
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
 
-        String cmd = (args.length == 0) ? "demo" : args[0].trim().toLowerCase(Locale.ROOT);
-        try (Connection conn = DriverManager.getConnection(DB_URL)) {
-            conn.setAutoCommit(true);
+        if (!Files.exists(DATA_ROOT)) {
+            System.out.println("数据目录不存在: " + DATA_ROOT.toAbsolutePath());
+            return;
+        }
 
-            // 任何命令在运行前，都需要先保证表结构已经就绪
-            DatabaseInitializer.ensureSchema(conn);
+        // 1. 对代码中指定的某个 .all 文件做解析和单端测距分析
+        if (TARGET_FILE_NAME != null && !TARGET_FILE_NAME.isEmpty()) {
+            Path target = DATA_ROOT.resolve(TARGET_FILE_NAME);
 
-            switch (cmd) {
-                case "init":
-                    System.out.println("OK: schema initialized: demo.db");
-                    break;
-                case "seed":
-                    GridTopologyRepository.seedTopologyIfEmpty(conn);
-                    System.out.println("OK: topology seeded (if empty).");
-                    break;
-                case "simulate":
-                    GridTopologyRepository.seedTopologyIfEmpty(conn);
-                    long measId = TravelingWaveFaultLocator.simulateOneSample(conn);
-                    System.out.println("OK: inserted measurement id=" + measId);
-                    break;
-                case "locate":
-                    GridTopologyRepository.seedTopologyIfEmpty(conn);
-                    TravelingWaveFaultLocator.locateLatest(conn);
-                    break;
-                case "demo":
-                default:
-                    GridTopologyRepository.seedTopologyIfEmpty(conn);
-                    long id = TravelingWaveFaultLocator.simulateOneSample(conn);
-                    System.out.println("Inserted sample measurement id=" + id);
-                    TravelingWaveFaultLocator.locateById(conn, id);
-                    System.out.println();
-                    System.out.println("You can also run:");
-                    System.out.println("  init | seed | simulate | locate");
-                    break;
+            if (target == null) {
+                System.out.println();
+                System.out.println("未在 " + DATA_ROOT.toAbsolutePath() + " 下找到指定文件: " + TARGET_FILE_NAME);
+                return;
             }
+
+            System.out.println();
+            System.out.println("=== 解析并分析指定 .all 文件 ===");
+            System.out.println("目标文件: " + target.toAbsolutePath());
+
+            CurrentData df = AllFileDecoder.decode(target);
+            // 先打印一段概要信息
+            printSummary(df);
+
+            // 询问用户选择测距相别
+            WaveformFaultAnalyzer.Phase phase = askPhaseFromConsole();
+
+            // 再做单端测距分析
+            WaveformFaultAnalyzer.Config cfg = WaveformFaultAnalyzer.Config.defaultConfig();
+            WaveformFaultAnalyzer.Result result = WaveformFaultAnalyzer.analyzeSingleEnded(df, cfg, phase);
+            if (result == null) {
+                System.out.println("自动波头识别失败，无法给出单端测距结果，请检查波形或调整算法参数。");
+            } else {
+                // 打印详细结果
+                result.printToConsole();
+                // 在 Main 中额外给出一行“最终故障点”摘要，便于快速查看
+                System.out.printf(Locale.ROOT,
+                        "最终故障点位置（相对本端）= %.6f km%n",
+                        result.distanceFromMeasuredEndKm);
+            }
+        }
+    }
+
+    /**
+     * 在控制台询问用户选择 A/B/C 相，默认 A 相。
+     */
+    private static WaveformFaultAnalyzer.Phase askPhaseFromConsole() {
+        System.out.print("请选择测距相别 (A/B/C)，直接回车默认为 A 相: ");
+        try {
+            BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+            String line = br.readLine();
+            if (line == null || line.trim().isEmpty()) {
+                return WaveformFaultAnalyzer.Phase.A;
+            }
+            char ch = Character.toUpperCase(line.trim().charAt(0));
+            switch (ch) {
+                case 'B':
+                    return WaveformFaultAnalyzer.Phase.B;
+                case 'C':
+                    return WaveformFaultAnalyzer.Phase.C;
+                case 'A':
+                default:
+                    return WaveformFaultAnalyzer.Phase.A;
+            }
+        } catch (Exception e) {
+            System.out.println("读取相别输入失败，默认使用 A 相。错误: " + e.getMessage());
+            return WaveformFaultAnalyzer.Phase.A;
+        }
+    }
+
+    /**
+     * 打印小段概要信息。
+     */
+    private static void printSummary(CurrentData df) {
+        System.out.printf(Locale.ROOT, "站号: %d, 线路: %d%n", df.station, df.line);
+        System.out.printf(Locale.ROOT, "日期时间: %04d-%02d-%02d %02d:%02d:%02d.%s%n",
+                df.year, df.month, df.day, df.hour, df.minute, df.second, df.microSecond);
+        System.out.printf(Locale.ROOT, "数据点数: %d%n", df.dataLength);
+        System.out.printf(Locale.ROOT, "GPS频率: %s, GPS标志: %d, 跳闸标志: %d%n",
+                df.gpsFrequency, df.gpsFlag, df.breakFlag);
+
+        int printN = Math.min(df.dataLength, 10);
+        System.out.println("前 " + printN + " 个 A 相数据:");
+        for (int i = 0; i < printN; i++) {
+            System.out.printf(Locale.ROOT, "A[%d] = %f%n", i, df.dataA[i]);
         }
     }
 }
