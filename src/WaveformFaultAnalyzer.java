@@ -1,11 +1,13 @@
 import java.util.Locale;
 
 /**
- * 基于 .all 解析出的波形做简单单端测距分析的模块。
+ * 基于 .all 波形做单端故障测距分析的模块.
  *
- * 说明：这里实现的是一个“教学 Demo 级别”的波头自动识别算法，
- * 仅用于帮助理解从录波 → 波头时刻 → 单端测距的大致流程。
- * 工程上可根据需要替换为更复杂、更稳健的波头识别算法。
+ * 类作用:
+ * - 从 CurrentData 中选取一相波形.
+ * - 自动识别入射波与反射波波头采样点.
+ * - 调用单端行波测距公式计算距测量端的故障距离.
+ *
  */
 public final class WaveformFaultAnalyzer {
 
@@ -13,19 +15,29 @@ public final class WaveformFaultAnalyzer {
     }
 
     /**
-     * 用单端法对某一相波形进行故障测距分析（默认使用 A 相）。
+     * 用单端法对某一相波形进行故障测距分析, 默认使用 A 相.
+     *
+     * 输入:
+     * - df: 解析后的 .all 波形数据.
+     * - cfg: 单端测距配置参数.
+     *
+     * 输出:
+     * - 返回 Result, 包含波头位置和故障距离; 自动识别失败返回 null.
      */
     public static Result analyzeSingleEnded(CurrentData df, Config cfg) {
         return analyzeSingleEnded(df, cfg, Phase.A);
     }
 
     /**
-     * 用单端法对指定相别（A/B/C）波形进行故障测距分析。
+     * 用单端法对指定相别波形进行故障测距分析.
      *
-     * @param df    解析自 .all 的波形数据
-     * @param cfg   测距配置参数（采样间隔、行波速度、线路长度等）
-     * @param phase 相别：A / B / C
-     * @return 分析结果，如果自动识别失败则返回 null
+     * 输入:
+     * - df: 解析后的 .all 波形数据.
+     * - cfg: 单端测距配置参数.
+     * - phase: 相别, A/B/C.
+     *
+     * 输出:
+     * - 返回 Result, 包含波头采样点、时间和距离; 自动识别失败返回 null.
      */
     public static Result analyzeSingleEnded(CurrentData df, Config cfg, Phase phase) {
         double[] x;
@@ -104,26 +116,34 @@ public final class WaveformFaultAnalyzer {
 
     // ----------------- 配置与结果类型 -----------------
 
-    /** 相别枚举。 */
+    /** 相别枚举, 表示 A/B/C 三相. */
     public enum Phase {
         A, B, C
     }
 
     /**
-     * 单端测距所需的配置参数。
+     * 单端测距所需的配置参数.
+     *
+     * 字段含义:
+     * - samplingIntervalMs: 采样间隔, ms.
+     * - waveSpeedKmPerMs: 行波速度, km/ms.
+     * - lineLengthKm: 线路长度, km.
+     * - firstWaveSigma: 入射波检测阈值倍数.
+     * - secondWaveSigma: 反射波检测阈值倍数.
+     * - minSamplesBetweenWaves: 入射波与反射波之间的最小样本间隔.
      */
     public static final class Config {
-        /** 采样间隔（ms），例如 100kHz 采样则为 0.01 ms。 */
+        /** 采样间隔（ms），默认 100kHz 采样则为 0.01 ms。 */
         public final double samplingIntervalMs;
         /** 行波传播速度（km/ms），例如 2e5 km/s ≈ 200 km/ms。 */
         public final double waveSpeedKmPerMs;
-        /** 线路总长（km），主要用于对结果进行工程对比，本算法本身不直接用到。 */
+        /** 线路总长（km），默认 300km， */
         public final double lineLengthKm;
-        /** 识别入射波时使用的噪声倍数阈值。 */
+        /** 识别入射波时使用的噪声倍数阈值，默认 6.0。 */
         public final double firstWaveSigma;
-        /** 识别反射波时使用的噪声倍数阈值。 */
+        /** 识别反射波时使用的噪声倍数阈值，默认 5.0。 */
         public final double secondWaveSigma;
-        /** 入射波与反射波之间至少间隔的采样点数。 */
+        /** 入射波与反射波之间至少间隔的采样点数，默认 500。 */
         public final int minSamplesBetweenWaves;
 
         public Config(double samplingIntervalMs,
@@ -141,8 +161,13 @@ public final class WaveformFaultAnalyzer {
         }
 
         /**
-         * 提供一个较为保守的默认配置，便于快速试跑。
-         * 你可以根据实际线路情况（采样频率、行波速度、线路长度等）进行调整。
+         * 提供一个默认配置.
+         *
+         * 输入:
+         * - 无.
+         *
+         * 输出:
+         * - 返回一组可用于 demo 的配置参数.
          */
         public static Config defaultConfig() {
             double samplingIntervalMs = 0.01; // 假定 100kHz 采样
@@ -156,7 +181,15 @@ public final class WaveformFaultAnalyzer {
     }
 
     /**
-     * 单端测距分析结果。
+     * 单端测距分析结果.
+     *
+     * 字段含义:
+     * - fileName: 源 .all 文件名.
+     * - phase: 使用的相别.
+     * - firstWaveIndex/secondWaveIndex: 入射波和反射波的采样点索引.
+     * - firstWaveTimeMs/secondWaveTimeMs: 对应时间, ms.
+     * - distanceFromMeasuredEndKm: 距测量端的故障距离, km.
+     * - config: 使用的配置参数.
      */
     public static final class Result {
         public final String fileName;
@@ -186,6 +219,15 @@ public final class WaveformFaultAnalyzer {
             this.config = config;
         }
 
+        /**
+         * 将测距结果按人类可读格式打印到控制台.
+         *
+         * 输入:
+         * - 无, 使用当前字段.
+         *
+         * 输出:
+         * - 在标准输出打印结果行.
+         */
         public void printToConsole() {
             System.out.println("=== 基于 .all 波形的单端故障测距结果 ===");
             System.out.println("文件名        = " + fileName);
@@ -198,4 +240,3 @@ public final class WaveformFaultAnalyzer {
         }
     }
 }
-

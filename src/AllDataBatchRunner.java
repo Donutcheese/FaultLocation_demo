@@ -9,11 +9,11 @@ import java.util.stream.Stream;
  * 批量遍历并解析 src/data 目录下的所有 .all 文件。
  *
  * 使用方法（在项目根目录执行）：
- *   javac src\\*.java
- *   java -cp src AllDataBatchRunner
+ * javac src\\*.java
+ * java -cp src AllDataBatchRunner
  *
  * 也可以通过命令行参数指定起始目录：
- *   java -cp src AllDataBatchRunner d:\\FaultLocation_demo\\src\\data
+ * java -cp src AllDataBatchRunner d:\\FaultLocation_demo\\src\\data
  */
 public final class AllDataBatchRunner {
 
@@ -39,8 +39,8 @@ public final class AllDataBatchRunner {
         System.out.println("扫描目录: " + root.toAbsolutePath());
         try (Stream<Path> stream = Files.walk(root)) {
             stream.filter(p -> p.toString().toLowerCase(Locale.ROOT).endsWith(".all"))
-                  .sorted()
-                  .forEach(AllDataBatchRunner::handleOneFile);
+                    .sorted()
+                    .forEach(AllDataBatchRunner::handleOneFile);
         }
     }
 
@@ -56,7 +56,7 @@ public final class AllDataBatchRunner {
     }
 
     /**
-     * 打印与原 C main 类似的一小段摘要信息，方便快速验证解析是否正确。
+     * 打印小段摘要信息，方便快速验证解析是否正确。
      */
     private static void printSummary(CurrentData df) {
         System.out.printf(Locale.ROOT,
@@ -77,4 +77,3 @@ public final class AllDataBatchRunner {
         }
     }
 }
-

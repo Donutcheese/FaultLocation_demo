@@ -1,12 +1,21 @@
 /**
- * 对应原 C 代码中的 CurrentData 结构体，
- * 用于承载一次 .all 波形文件解析后的全部信息。
+ * 对应 C 代码中的 CurrentData 结构体.
+ *
+ * 用途:
+ * - 保存一次 .all 文件解析出的头部信息与三相波形数据.
+ * - 作为后续波头识别与故障测距算法的输入数据结构.
+ *
+ * 输入来源:
+ * - 由 AllFileDecoder.decode 解析得到.
+ *
+ * 使用方式:
+ * - 只读数据载体, 字段在构造函数中一次性赋值.
  */
 public final class CurrentData {
 
     // ------------ 头部信息字段（来自文本头部） ------------
-    public final int station;          // 站号
-    public final int line;             // 线路号
+    public final int station; // 站号
+    public final int line; // 线路号
     public final int year;
     public final int month;
     public final int day;
@@ -32,7 +41,7 @@ public final class CurrentData {
      */
     public final int dataLength;
 
-    // ------------ 三相波形数据（按 C 代码解码后的物理量，单位与原算法保持一致） ------------
+    // ------------ 三相波形数据 ------------
     public final double[] dataA;
     public final double[] dataB;
     public final double[] dataC;
@@ -85,4 +94,3 @@ public final class CurrentData {
         this.fileName = fileName;
     }
 }
-

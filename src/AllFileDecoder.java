@@ -4,26 +4,33 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * .all 波形文件解析模块。
+ * .all 波形文件解析模块.
  *
- * 该类按给定的 C 参考实现（DeCodeDataFile）逐字节复刻解码逻辑：
- * - 在前 80 字节内查找 16 个空格位置，用于切分文本头部字段；
- * - 解析站号、线路号、日期时间、微秒、GPS 频率、启动门槛等信息；
- * - 根据数据区长度选择 12bit / 16bit 两种编码格式解码三相波形。
+ * 类作用:
+ * - 从磁盘读取 .all 文件的二进制内容.
+ * - 切分头部字段和数据区.
+ * - 将头部字段和三相波形数据封装为 CurrentData 实例.
+ *
+ * 使用方式:
+ * - 外部调用 decode(path) 获得 CurrentData.
  */
 public final class AllFileDecoder {
 
-    /** 与 C 代码中的 MAXDATALENGTH 一致：512 * 1024 字节。 */
+    /** 与 C 代码中的 MAXDATALENGTH 一致: 512 * 1024 字节. */
     private static final int MAX_DATA_LENGTH = 512 * 1024;
 
     private AllFileDecoder() {
     }
 
     /**
-     * 解析单个 .all 文件。
+     * 解析单个 .all 文件.
      *
-     * @param path .all 文件路径
-     * @return 解析得到的 CurrentData 对象
+     * 输入:
+     * - path: .all 文件路径.
+     *
+     * 输出:
+     * - 解析成功返回 CurrentData.
+     * - 解析失败抛出 IOException.
      */
     public static CurrentData decode(Path path) throws IOException {
         byte[] buf = Files.readAllBytes(path);
@@ -34,7 +41,7 @@ public final class AllFileDecoder {
             throw new IOException("文件过大(> " + MAX_DATA_LENGTH + " bytes): " + path);
         }
 
-        // ---------- 1. 在前 80 字节内寻找 16 个空格，复刻 C 代码的 pos[16] ----------
+        // ---------- 1. 在前 80 字节内寻找 16 个空格， ----------
         int[] pos = new int[16];
         int j = 0;
         int limit = Math.min(80, buf.length);
@@ -47,13 +54,13 @@ public final class AllFileDecoder {
             throw new IOException("头部格式异常：未找到 16 个空格，文件=" + path);
         }
 
-        // C 代码中的 start = pos[15] + 2，假定头部行以 CRLF (\r\n) 结束
+        // start = pos[15] + 2，假定头部行以 CRLF (\r\n) 结束
         int start = pos[15] + 2;
         if (start >= buf.length) {
             throw new IOException("数据区起始位置超出文件长度，文件=" + path);
         }
 
-        // ---------- 2. 解析头部各字段（严格按照 C 代码的字段顺序） ----------
+        // ---------- 2. 解析头部各字段 ----------
         int station = parseIntField(buf, 0, pos[0]);
         int line = parseIntField(buf, pos[0], pos[1]);
         int year = parseIntField(buf, pos[1], pos[2]);
@@ -73,7 +80,7 @@ public final class AllFileDecoder {
         double startupValue2 = parseDoubleField(buf, pos[13], pos[14]);
         double startupValue3 = parseDoubleField(buf, pos[14], pos[15]);
 
-        // ---------- 3. 解析数据区（三相波形），与 C 代码保持一致 ----------
+        // ---------- 3. 解析数据区（三相波形） ----------
         int rawDataBytes = buf.length - start;
         if (rawDataBytes < 0) {
             throw new IOException("数据区长度为负，文件=" + path);
@@ -88,7 +95,7 @@ public final class AllFileDecoder {
         double[] dataB = new double[dataLength + 150];
         double[] dataC = new double[dataLength + 150];
 
-        // 与 C 代码保持同一判断：小于 32769 点时按 12bit 编码解码，否则按 16bit 短整型解码
+        // 小于 32769 点时按 12bit 编码解码，否则按 16bit 短整型解码
         if (dataLength < 32769) {
             // 12bit 数据：((b1 << 4) | b0) - 0x800
             for (int i = 0; i < dataLength; i++) {
@@ -144,6 +151,10 @@ public final class AllFileDecoder {
 
     // ------------------------- 头部字段解析辅助方法 -------------------------
 
+    /**
+     * 将 [from, to) 范围内的字节解析为 int.
+     * 空字符串返回 0.
+     */
     private static int parseIntField(byte[] buf, int from, int to) {
         String s = parseStringField(buf, from, to);
         if (s.isEmpty()) {
@@ -152,6 +163,10 @@ public final class AllFileDecoder {
         return Integer.parseInt(s);
     }
 
+    /**
+     * 将 [from, to) 范围内的字节解析为 double.
+     * 空字符串返回 0.0.
+     */
     private static double parseDoubleField(byte[] buf, int from, int to) {
         String s = parseStringField(buf, from, to);
         if (s.isEmpty()) {
@@ -161,7 +176,14 @@ public final class AllFileDecoder {
     }
 
     /**
-     * 从 [from, to) 区间提取 ASCII 文本字段，并去掉前后空白。
+     * 从 [from, to) 区间提取 ASCII 文本字段, 去掉前后空白.
+     *
+     * 输入:
+     * - buf: 原始字节数组.
+     * - from, to: 字节区间.
+     *
+     * 输出:
+     * - 去掉空白后的字符串.
      */
     private static String parseStringField(byte[] buf, int from, int to) {
         int begin = Math.max(0, from);
@@ -179,8 +201,10 @@ public final class AllFileDecoder {
         return new String(buf, begin, end - begin, StandardCharsets.US_ASCII);
     }
 
+    /**
+     * 判断单个字节是否为空白字符.
+     */
     private static boolean isWhitespace(byte b) {
         return b == ' ' || b == '\t' || b == '\r' || b == '\n';
     }
 }
-

@@ -1,11 +1,12 @@
 /**
- * 故障测距算法模块。
+ * 故障测距算法模块.
  *
- * 设计原则：
- * - 本类只关心“数学公式”和“物理含义”，不依赖数据库、文件格式等外部细节；
- * - 对外暴露“双端行波测距公式”“单端行波测距公式”等纯算法接口；
- * - 其他模块（例如 TravelingWaveFaultLocator、.all 文件处理流程）只需要传入
- *   已经推算好的到达时间 / 采样点序号等参数即可。
+ * 类作用:
+ * - 提供双端行波测距公式和单端行波测距公式的实现.
+ * - 与文件解析和波头识别解耦, 只依赖时间和线路参数.
+ *
+ * 使用方式:
+ * - 外部先确定 tA/tB 或 t1/t2 和 v/L, 再调用对应静态方法得到距离.
  */
 public final class FaultLocationAlgorithms {
 
@@ -13,25 +14,22 @@ public final class FaultLocationAlgorithms {
     }
 
     /**
-     * 双端行波故障测距（对称线路，简化模型）。
+     * 双端行波故障测距.
      *
-     * 公式推导与含义：
-     *   设整条线路长度为 L，行波传播速度为 v，
-     *   故障点到 A 端距离为 d，
-     *   行波从故障点到 A、B 两端的走时分别为 tA、tB。
+     * 数学关系:
+     * - tA = d / v
+     * - tB = (L - d) / v
+     * - d = (L + v * (tA - tB)) / 2
      *
-     *   tA = d / v
-     *   tB = (L - d) / v
-     *   =>
-     *   d = (L + v * (tA - tB)) / 2
+     * 输入:
+     * - lineLengthKm: 线路总长度 L, 单位 km.
+     * - waveSpeedKmPerMs: 行波传播速度 v, 单位 km/ms.
+     * - tAms: 故障行波到达 A 端时间 tA, 单位 ms.
+     * - tBms: 故障行波到达 B 端时间 tB, 单位 ms.
      *
-     * 为提高鲁棒性，本实现会将 d 限制在 [0, L] 区间内。
-     *
-     * @param lineLengthKm   线路总长度 L，单位 km
-     * @param waveSpeedKmPerMs 行波传播速度 v，单位 km/ms（约 200 km/ms ≈ 2×10^5 km/s）
-     * @param tAms           故障行波到达 A 端的时间 tA，单位 ms（相对某共同时刻）
-     * @param tBms           故障行波到达 B 端的时间 tB，单位 ms
-     * @return 双端测距结果（从 A 端、B 端分别量测的距离，单位 km）
+     * 输出:
+     * - 返回 DoubleEndResult, 包含距 A 端和距 B 端的距离, 单位 km.
+     * - 结果自动限制在 [0, L].
      */
     public static DoubleEndResult doubleEndByTimes(
             double lineLengthKm,
@@ -49,25 +47,19 @@ public final class FaultLocationAlgorithms {
     }
 
     /**
-     * 单端行波故障测距（“入射波 + 反射波”模型，简化公式）。
+     * 单端行波故障测距.
      *
-     * 常见简化模型：
-     *   - 在线路上某处发生故障；
-     *   - 以 A 端为测量端，能够在该端同时观测到“故障入射波”和“远端反射波”；
-     *   - 设入射波到达 A 端的时间为 t1，反射波（由远端或故障点再次反射）到达 A 端的时间为 t2；
-     *   - 行波传播速度为 v。
+     * 数学关系:
+     * - d ≈ v * (t2 - t1) / 2.
      *
-     * 则可近似认为：
-     *   故障点到 A 端的距离 d ≈ v * (t2 - t1) / 2
+     * 输入:
+     * - waveSpeedKmPerMs: 行波传播速度 v, 单位 km/ms.
+     * - t1ms: 入射波到达测量端时间 t1, 单位 ms.
+     * - t2ms: 反射波到达测量端时间 t2, 单位 ms.
      *
-     * 注意：
-     *   - 这里假设 (t2 - t1) 足够小、线路为均匀单回路、反射路径简化为“往返一次”；
-     *   - 在工程上需要结合实际线路模型和波头识别算法进行修正。
-     *
-     * @param waveSpeedKmPerMs 行波传播速度 v，单位 km/ms
-     * @param t1ms             入射波到达测量端的时间 t1，单位 ms
-     * @param t2ms             相应反射波到达测量端的时间 t2，单位 ms
-     * @return 故障点到该测量端的距离 d，单位 km
+     * 输出:
+     * - 返回距该测量端的距离 d, 单位 km.
+     * - 若 t2 <= t1 则返回 0.0.
      */
     public static double singleEndByTwoWaveTimes(
             double waveSpeedKmPerMs,
@@ -82,12 +74,14 @@ public final class FaultLocationAlgorithms {
     }
 
     /**
-     * 若已经通过波头识别算法得到了“采样点序号”而非时间，
-     * 可先将采样点转为时间，再调用 doubleEndByTimes/singleEndByTwoWaveTimes。
+     * 将采样点序号转换为时间.
      *
-     * @param sampleIndex      采样点序号（从 0 开始）
-     * @param samplingIntervalMs 采样间隔 Δt，单位 ms
-     * @return 对应时间 t = sampleIndex * Δt，单位 ms
+     * 输入:
+     * - sampleIndex: 采样点序号, 从 0 开始.
+     * - samplingIntervalMs: 采样间隔 Δt, 单位 ms.
+     *
+     * 输出:
+     * - 对应时间 t = sampleIndex * Δt, 单位 ms.
      */
     public static double sampleIndexToTimeMs(long sampleIndex, double samplingIntervalMs) {
         return sampleIndex * samplingIntervalMs;
@@ -96,7 +90,11 @@ public final class FaultLocationAlgorithms {
     // ----------------- 辅助类型与工具方法 -----------------
 
     /**
-     * 双端行波测距结果。
+     * 双端行波测距结果.
+     *
+     * 字段含义:
+     * - distanceFromA: 故障点到 A 端的距离, km.
+     * - distanceFromB: 故障点到 B 端的距离, km.
      */
     public static final class DoubleEndResult {
         /** 故障点到 A 端距离，单位 km。 */

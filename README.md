@@ -22,11 +22,14 @@ $$
 
 其中：
 
+其中：
+- $t_A = \dfrac{d}{v}$
+- $t_B = \dfrac{L - d}{v}$
+
 - \( L \)：线路全长；
 - \( v \)：行波传播速度；
 - \( d \)：故障点到 A 端的距离；
-- \( t_A = \dfrac{d}{v} \)：故障行波从故障点传播到 A 端的走时；
-- \( t_B = \dfrac{L - d}{v} \)：故障行波从故障点传播到 B 端的走时。
+
 
 在 Java 代码中，对应 `FaultLocationAlgorithms.doubleEndByTimes(...)`，当前 Demo
 尚未接上真实“双端 .all 文件配对”的流程，但算法已经单独封装好，后续可直接复用。
@@ -89,7 +92,7 @@ java -cp src Main
 运行过程中，控制台会依次输出：
 
 1. 选定 `.all` 文件的基本信息：站号、线路号、时间、数据点数、GPS 信息、前若干个 A 相数据；
-2. 提示你输入测距相别（A/B/C，直接回车则默认使用 A 相）；
+2. 提示输入测距相别（A/B/C，直接回车则默认使用 A 相）；
 3. 打印单端测距分析结果，包括：
    - 采用的测距相别；
    - 入射波 / 反射波的样本索引与时间；
@@ -101,45 +104,5 @@ java -cp src Main
 最终故障点位置（相对本端）= X.XXXXXX km
 ```
 
-你可以通过修改 `Main` 中的 `TARGET_FILE_NAME`，来指定不同的 `.all` 文件进行解析与测距。
-
-# 电网拓扑 + SQLite + 双端行波测距 Demo（可运行）
-
-## 仅供个人练习，目前只有Java实现
-
-- 一个很小的电网拓扑：3 个站（A/B/C），2 条线路（A-B、B-C）
-- SQLite 数据库（`demo.db`）里保存：
-  - 站名（`station`）
-  - 线路号与长度、两端站点（`line`）
-  - 双端到达时间与波速（`measurement`）
-- 一个简化的双端行波测距定位计算：
-
-$$
-d = \dfrac{L + v \cdot (t_A - t_B)}{2}
-$$
-
-其中：
-- $t_A = \dfrac{d}{v}$
-- $t_B = \dfrac{L - d}{v}$
-
-## 运行方式（Windows / PowerShell）
-
-
-
-## 可用命令
-
-```powershell
-.\run.ps1 init
-.\run.ps1 seed
-.\run.ps1 simulate
-.\run.ps1 locate
-```
-
-- `demo`：初始化 + 种子拓扑 + 插入一条样例测距 + 输出定位结果
-- `simulate`：只插入一条样例测距记录（演示噪声）
-- `locate`：对最新一条测距记录做定位并打印
-
-## 运行结果
-<img width="1477" height="750" alt="image" src="https://github.com/user-attachments/assets/d1c8a703-0aad-4a09-81c2-686c8667d8b2" />
-
+可以通过修改 `Main` 中的 `TARGET_FILE_NAME`，来指定不同的 `.all` 文件进行解析与测距。
 

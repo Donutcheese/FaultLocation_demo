@@ -5,31 +5,39 @@ import java.nio.file.Files;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 
-// 说明：本 Demo 中所有类都放在“默认包”下（即未显式声明 package），
-// 在这种情况下可以在 Main 中直接使用 DatabaseInitializer / GridTopologyRepository / TravelingWaveFaultLocator
-// 而不需要显式 import，它们会自动处于同一命名空间。
-
 /**
- * 程序入口类（Main）。
+ * 程序入口类 Main.
  *
- * 当前版本：
- * - 在代码中通过文件名指定一个 .all 文件；
- * - 只解析并打印这一份 .all 的概要信息（与最初 C++ 示例等价）；
- * - 随后对该文件执行单端测距算法。
+ * 类作用:
+ * - 从固定目录中选择一个 .all 文件作为输入.
+ * - 调用 AllFileDecoder 解析录波头部和三相数据.
+ * - 打印基本信息, 询问用户选择 A/B/C 相, 调用单端测距模块输出结果.
+ *
+ * 注意:
+ * - 当前版本不使用数据库, 仅处理本地 .all 文件.
  */
 public class Main {
     /**
-     * .all 文件所在的根目录（相对于工程根目录）。
-     * 目前所有示例数据都在 src/data 下。
+     * .all 文件所在的根目录, 相对于工程根目录.
+     * 所有示例数据默认放在 src/data 下.
      */
     private static final Path DATA_ROOT = Paths.get("src", "data");
 
     /**
-     * 输入需要的.all文件名
-     * 
+     * 需要分析的 .all 文件名.
+     * 用户可修改为 src/data 下的任意文件名.
      */
     private static final String TARGET_FILE_NAME = "140423231753杨马线M0053.all";
 
+    /**
+     * 程序入口.
+     *
+     * 输入:
+     * - args: 当前未使用, 保留扩展.
+     *
+     * 输出:
+     * - 在控制台打印解析信息和故障测距结果.
+     */
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
 
@@ -76,7 +84,13 @@ public class Main {
     }
 
     /**
-     * 在控制台询问用户选择 A/B/C 相，默认 A 相。
+     * 在控制台询问用户选择 A/B/C 相, 默认 A 相.
+     *
+     * 输入:
+     * - 无, 从标准输入读取一个字符.
+     *
+     * 输出:
+     * - 返回用户选择的相别 Phase, 输入无效或出错时返回 A 相.
      */
     private static WaveformFaultAnalyzer.Phase askPhaseFromConsole() {
         System.out.print("请选择测距相别 (A/B/C)，直接回车默认为 A 相: ");
@@ -103,7 +117,13 @@ public class Main {
     }
 
     /**
-     * 打印小段概要信息。
+     * 打印指定 .all 文件解析出的概要信息.
+     *
+     * 输入:
+     * - df: 解析后的 CurrentData.
+     *
+     * 输出:
+     * - 在控制台打印站号、线路号、时间、点数、GPS 信息和前若干个 A 相采样值.
      */
     private static void printSummary(CurrentData df) {
         System.out.printf(Locale.ROOT, "站号: %d, 线路: %d%n", df.station, df.line);
