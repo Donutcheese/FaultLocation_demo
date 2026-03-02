@@ -12,6 +12,7 @@ import java.io.InputStreamReader;
  * - 从固定目录中选择一个 .all 文件作为输入.
  * - 调用 AllFileDecoder 解析录波头部和三相数据.
  * - 打印基本信息, 询问用户选择 A/B/C 相, 调用单端测距模块输出结果.
+ * A B C三相也要分别计算幅值，默认输出幅值最大的相
  *
  * 注意:
  * - 当前版本不使用数据库, 仅处理本地 .all 文件.
@@ -27,7 +28,7 @@ public class Main {
      * 需要分析的 .all 文件名.
      * 用户可修改为 src/data 下的任意文件名.
      */
-    private static final String TARGET_FILE_NAME = "140423231753杨马线M0053.all";
+    private static final String TARGET_FILE_NAME = "20160505101341-极1-M818.all";
 
     /**
      * 程序入口.

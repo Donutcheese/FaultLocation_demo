@@ -16,6 +16,7 @@ public final class FaultLocationAlgorithms {
     /**
      * 双端行波故障测距.
      *
+     * 以首端为准，从。all文件中的6为时间点确定ta和tb
      * 数学关系:
      * - tA = d / v
      * - tB = (L - d) / v
@@ -118,4 +119,3 @@ public final class FaultLocationAlgorithms {
         return x;
     }
 }
-

@@ -1,7 +1,7 @@
 import java.util.Locale;
 
 /**
- * 基于 .all 波形做单端故障测距分析的模块.
+ * 基于 .all 波形文件做单端故障测距分析的模块.
  *
  * 类作用:
  * - 从 CurrentData 中选取一相波形.
@@ -57,7 +57,13 @@ public final class WaveformFaultAnalyzer {
         if (n < 10) {
             return null;
         }
-
+        /*
+         * 提取之后，db，多尺度滤波，小波变换，先滤4个尺度，
+         * 先滤波，
+         * 找到尺度1， 尺度2，尺度3，尺度4，的最大值时刻，如果时间相近，作为初始时刻（ta,tb）
+         * 
+         * 
+         */
         // 1. 用前 preN 个样本估计“背景噪声”
         int preN = Math.min(1000, Math.max(50, n / 10));
         double mean = 0.0;
@@ -72,6 +78,12 @@ public final class WaveformFaultAnalyzer {
             double dx = (x[i] - mean) - (x[i - 1] - mean);
             sumSq += dx * dx;
         }
+        /*
+         * 计算差分的标准差，用于设置阈值
+         * 差分：x[i] - x[i-1]
+         * 标准差：sqrt(sum((x[i] - x[i-1] - mean)^2) / (n-1))
+         * 阈值：cfg.firstWaveSigma * noiseStd
+         */
         double noiseStd = Math.sqrt(sumSq / Math.max(1, preN - 1));
         double threshold1 = cfg.firstWaveSigma * noiseStd;
         double threshold2 = cfg.secondWaveSigma * noiseStd;
@@ -134,10 +146,13 @@ public final class WaveformFaultAnalyzer {
      */
     public static final class Config {
         /** 采样间隔（ms），默认 100kHz 采样则为 0.01 ms。 */
+        /*
+         * 实际是1250khz 算出有n个采样点，以4000微妙为准，加入解析头文件的时间开始点，按照295写
+         */
         public final double samplingIntervalMs;
         /** 行波传播速度（km/ms），例如 2e5 km/s ≈ 200 km/ms。 */
         public final double waveSpeedKmPerMs;
-        /** 线路总长（km），默认 300km， */
+        /** 线路总长（km），默认 3000km， */
         public final double lineLengthKm;
         /** 识别入射波时使用的噪声倍数阈值，默认 6.0。 */
         public final double firstWaveSigma;

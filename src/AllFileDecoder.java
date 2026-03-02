@@ -14,9 +14,15 @@ import java.nio.file.Path;
  * 使用方式:
  * - 外部调用 decode(path) 获得 CurrentData.
  */
+/*
+ * 数据总长度，数据点数，
+ * 解析出来的前n个数据，3个为一组，abc三相
+ * 
+ * 
+ */
 public final class AllFileDecoder {
 
-    /** 与 C 代码中的 MAXDATALENGTH 一致: 512 * 1024 字节. */
+    /** 512 * 1024 字节. */
     private static final int MAX_DATA_LENGTH = 512 * 1024;
 
     private AllFileDecoder() {
