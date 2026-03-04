@@ -16,7 +16,7 @@ class Phase(enum.Enum):
 
 @dataclass
 class AnalyzerConfig:
-    sampling_interval_ms: float = 0.001  # 对应 1MHz 高频录波
+    sampling_interval_ms: float = 0.00125  # 对应 1MHz 高频录波
     wave_speed_km_per_ms: float = 299.79 # 光速基准
     line_length_km: float = 300.0
     first_wave_sigma: float = 6.0
@@ -63,6 +63,8 @@ def analyze_single_end(df: CurrentData, cfg: AnalyzerConfig, phase: Phase) -> Op
     cA4, cD4, cD3, cD2, cD1 = coeffs
 
     # 寻找模极大值并补偿 db4 滤波器的群延迟相移
+
+    #TODO: 需要根据实际情况调整
     shift_1, shift_2, shift_3, shift_4 = 3, 10, 24, 52
 
     idx_1 = int(np.argmax(np.abs(cD1)) * 2) - shift_1
@@ -93,7 +95,7 @@ def analyze_single_end(df: CurrentData, cfg: AnalyzerConfig, phase: Phase) -> Op
     )
 
 def calculate_absolute_arrival_time(df: CurrentData, relative_time_ms: float) -> float:
-    """将头文件基准时间和相对时间融合成全网唯一的毫秒级绝对时间戳"""
+    """将头文件基准时间和相对时间融合成唯一的毫秒级绝对时间戳"""
     try:
         micro_sec = float(df.micro_second)
     except ValueError:
@@ -123,7 +125,7 @@ def double_end_by_times(line_length_km: float, wave_speed_km_per_ms: float, t_a_
 
     # 2. 越界情况处理 (物理意义：近区故障，波速设置偏大或存在GPS微小时差)
     # 定义一个极小的保护边距（例如线路全长的 0.2%，且不超过 0.5 公里）
-    # 这样既能精准反映出这是“近端故障”，又能输出合法结果
+    # 反映出这是“近端故障”，又能输出合法结果
     safe_margin_km = min(0.5, L * 0.002)
 
     if d_from_a_raw < 0.0:
