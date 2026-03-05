@@ -32,3 +32,4 @@ bin/
 ### Java class files ###
 *.class
 *.pyc
+python/**/__pycache__/

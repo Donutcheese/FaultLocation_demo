@@ -17,7 +17,7 @@ class Phase(enum.Enum):
 @dataclass
 class AnalyzerConfig:
     sampling_interval_ms: float = 0.00125  # 对应 1MHz 高频录波
-    wave_speed_km_per_ms: float = 299.79 # 光速基准
+    wave_speed_km_per_ms: float = 299.79 # 光速基准， 单位修改
     line_length_km: float = 300.0
     first_wave_sigma: float = 6.0
 
@@ -63,8 +63,6 @@ def analyze_single_end(df: CurrentData, cfg: AnalyzerConfig, phase: Phase) -> Op
     cA4, cD4, cD3, cD2, cD1 = coeffs
 
     # 寻找模极大值并补偿 db4 滤波器的群延迟相移
-
-    #TODO: 需要根据实际情况调整
     shift_1, shift_2, shift_3, shift_4 = 3, 10, 24, 52
 
     idx_1 = int(np.argmax(np.abs(cD1)) * 2) - shift_1
@@ -95,7 +93,7 @@ def analyze_single_end(df: CurrentData, cfg: AnalyzerConfig, phase: Phase) -> Op
     )
 
 def calculate_absolute_arrival_time(df: CurrentData, relative_time_ms: float) -> float:
-    """将头文件基准时间和相对时间融合成唯一的毫秒级绝对时间戳"""
+    """将头文件基准时间和相对时间融合成全网唯一的毫秒级绝对时间戳"""
     try:
         micro_sec = float(df.micro_second)
     except ValueError:
