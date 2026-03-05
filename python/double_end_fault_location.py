@@ -16,10 +16,10 @@ class Phase(enum.Enum):
 
 @dataclass
 class AnalyzerConfig:
-    sampling_interval_ms: float = 0.00125  # 对应 1MHz 高频录波
-    wave_speed_km_per_ms: float = 299.79 # 光速基准， 单位修改
-    line_length_km: float = 300.0
-    first_wave_sigma: float = 6.0
+    sampling_interval_ms: float = 0.001     # 采样间隔 (ms)，对应 1MHz 高频录波
+    wave_speed_km_per_ms: float = 299.79    # 行波速度内部单位 km/ms (≈ 2.9979e8 m/s)
+    line_length_km: float = 1000.0           # 测试阶段默认 1000km
+    first_wave_sigma: float = 4.0            # 波头检测显著性阈值系数
 
 @dataclass
 class SingleEndResult:
@@ -47,48 +47,160 @@ def _select_phase_data(df: CurrentData, phase: Phase) -> np.ndarray:
         data = df.data_c
     else:
         data = df.data_a
-    return data[: df.data_length]
+    return np.asarray(data[: df.data_length], dtype=np.float64)
+
+
+# ---------------------------------------------------------------------------
+#  小波多尺度滤波（去噪）
+# ---------------------------------------------------------------------------
+
+def _wavelet_denoise(signal: np.ndarray, wavelet: str = "db4", level: int = 4) -> np.ndarray:
+    """
+    4 尺度小波多尺度滤波 (VisuShrink 软阈值去噪).
+    - 使用 MAD 估计噪声标准差
+    - 通用阈值 (Universal Threshold): σ√(2 ln n)
+    - 软阈值处理细节系数，保留近似系数
+    """
+    n = len(signal)
+    max_level = pywt.dwt_max_level(n, pywt.Wavelet(wavelet).dec_len)
+    actual_level = min(level, max_level)
+    if actual_level < 1:
+        return signal.copy()
+
+    coeffs = pywt.wavedec(signal, wavelet, level=actual_level)
+
+    # MAD (Median Absolute Deviation) 估计噪声标准差
+    sigma = np.median(np.abs(coeffs[-1])) / 0.6745
+    if sigma < 1e-12:
+        return signal.copy()
+
+    threshold = sigma * np.sqrt(2.0 * np.log(n))
+
+    denoised_coeffs = [coeffs[0]]  # 近似系数保持不变
+    for detail in coeffs[1:]:
+        denoised_coeffs.append(pywt.threshold(detail, threshold, mode="soft"))
+
+    rec = pywt.waverec(denoised_coeffs, wavelet)
+    return rec[:n]
+
+
+# ---------------------------------------------------------------------------
+#  波头首达模极大值检测
+# ---------------------------------------------------------------------------
+
+def _find_first_peak(detail: np.ndarray, scale_factor: int, shift: int,
+                     n: int, sigma_mult: float = 4.0) -> int:
+    """
+    在小波细节系数中寻找 **第一个** 显著模极大值点（而非全局最大），
+    更准确地对应行波首达时刻。
+    """
+    abs_d = np.abs(detail)
+    sigma = np.median(abs_d) / 0.6745
+    threshold = sigma_mult * sigma
+
+    if threshold < 1e-12:
+        peak_max = np.max(abs_d)
+        threshold = peak_max * 0.1 if peak_max > 1e-12 else 0.0
+
+    above = np.where(abs_d > threshold)[0]
+
+    if len(above) == 0:
+        coeff_idx = int(np.argmax(abs_d))
+    else:
+        # 在首次过阈值附近寻找局部峰值，取最精确位置
+        start = above[0]
+        search_end = min(start + 5, len(abs_d))
+        local_region = abs_d[start:search_end]
+        coeff_idx = start + int(np.argmax(local_region))
+
+    original_idx = coeff_idx * scale_factor - shift
+    return max(0, min(n - 1, original_idx))
+
+
+# ---------------------------------------------------------------------------
+#  跨尺度一致性校验
+# ---------------------------------------------------------------------------
+
+def _cross_scale_select(indices: list[int], cfg_interval_ms: float,
+                        tolerance_ms: float = 0.05) -> int:
+    """
+    跨 4 个尺度进行一致性校验：
+    以尺度 1（最高分辨率）为基准，若与尺度 2/3 的偏差在容限内则直接采用；
+    否则取偏差最小的两个尺度的均值。
+    """
+    idx1, idx2, idx3, idx4 = indices
+    tol_samples = tolerance_ms / cfg_interval_ms if cfg_interval_ms > 0 else 50
+
+    d12 = abs(idx1 - idx2)
+    d13 = abs(idx1 - idx3)
+
+    if d12 <= tol_samples or d13 <= tol_samples:
+        return idx1
+
+    diffs = [(abs(indices[i] - indices[j]), i, j)
+             for i in range(4) for j in range(i + 1, 4)]
+    diffs.sort()
+    best_i, best_j = diffs[0][1], diffs[0][2]
+    return (indices[best_i] + indices[best_j]) // 2
+
+
+# ---------------------------------------------------------------------------
+#  单端波头检测主函数
+# ---------------------------------------------------------------------------
 
 def analyze_single_end(df: CurrentData, cfg: AnalyzerConfig, phase: Phase) -> Optional[SingleEndResult]:
-    """多尺度小波变换波头检测 (含相移补偿)"""
+    """
+    多尺度小波变换波头检测 (含预滤波 + 相移补偿 + 跨尺度校验).
+
+    流程:
+      1. 小波多尺度滤波去噪 (VisuShrink, 4 尺度 db4)
+      2. 对去噪信号进行 4 尺度 db4 分解
+      3. 各尺度寻找首达模极大值 + 群延迟补偿
+      4. 跨尺度一致性校验，选出最可靠到达时刻
+    """
     x = _select_phase_data(df, phase)
     n = len(x)
-    if n < 10:
+    if n < 32:
         return None
 
-    # 4 尺度 db4 小波分解
-    coeffs = pywt.wavedec(x, "db4", level=4)
-    if len(coeffs) < 5:
+    # 1. 小波多尺度滤波去噪
+    x_filtered = _wavelet_denoise(x, "db4", 4)
+
+    # 2. 4 尺度 db4 分解
+    max_level = pywt.dwt_max_level(n, pywt.Wavelet("db4").dec_len)
+    actual_level = min(4, max_level)
+    if actual_level < 1:
         return None
-    cA4, cD4, cD3, cD2, cD1 = coeffs
 
-    # 寻找模极大值并补偿 db4 滤波器的群延迟相移
-    shift_1, shift_2, shift_3, shift_4 = 3, 10, 24, 52
+    coeffs = pywt.wavedec(x_filtered, "db4", level=actual_level)
 
-    idx_1 = int(np.argmax(np.abs(cD1)) * 2) - shift_1
-    idx_2 = int(np.argmax(np.abs(cD2)) * 4) - shift_2
-    idx_3 = int(np.argmax(np.abs(cD3)) * 8) - shift_3
-    idx_4 = int(np.argmax(np.abs(cD4)) * 16) - shift_4
+    # 根据实际分解层数提取系数（不足 4 层时自适应）
+    num_details = len(coeffs) - 1
+    details = list(reversed(coeffs[1:]))  # [cD1, cD2, ..., cDn] 从细到粗
+    scale_factors = [2 ** i for i in range(1, num_details + 1)]
+    shifts = [3, 10, 24, 52][:num_details]
 
-    idx_1 = max(0, min(n - 1, idx_1))
-    idx_2 = max(0, min(n - 1, idx_2))
-    idx_3 = max(0, min(n - 1, idx_3))
-    idx_4 = max(0, min(n - 1, idx_4))
+    # 3. 各尺度寻找首达模极大值
+    indices = []
+    for i in range(num_details):
+        idx = _find_first_peak(
+            details[i], scale_factors[i], shifts[i], n,
+            sigma_mult=cfg.first_wave_sigma,
+        )
+        indices.append(idx)
 
-    t1_ms = sample_index_to_time_ms(idx_1, cfg.sampling_interval_ms)
-    t2_ms = sample_index_to_time_ms(idx_2, cfg.sampling_interval_ms)
-    t3_ms = sample_index_to_time_ms(idx_3, cfg.sampling_interval_ms)
-    t4_ms = sample_index_to_time_ms(idx_4, cfg.sampling_interval_ms)
+    # 补齐到 4 个（不足时复制最后一个）
+    while len(indices) < 4:
+        indices.append(indices[-1])
 
-    # 始终选用尺度 1（最高时间分辨率）的波头作为结果，保证能输出测距
-    # 跨尺度仅作参考，不再因时间窗不满足而失败
-    first_index = idx_1
-    final_t1_ms = sample_index_to_time_ms(first_index, cfg.sampling_interval_ms)
+    # 4. 跨尺度一致性校验
+    first_index = _cross_scale_select(indices, cfg.sampling_interval_ms)
+    final_time_ms = sample_index_to_time_ms(first_index, cfg.sampling_interval_ms)
 
     return SingleEndResult(
         file_name=df.file_name, phase=phase,
-        first_index=first_index, second_index=first_index,
-        first_time_ms=final_t1_ms, second_time_ms=final_t1_ms,
+        first_index=first_index, second_index=indices[0],
+        first_time_ms=final_time_ms, second_time_ms=sample_index_to_time_ms(indices[0], cfg.sampling_interval_ms),
         distance_km=0.0, config=cfg,
     )
 

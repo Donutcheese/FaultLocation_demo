@@ -67,7 +67,7 @@ def _print_summary(df) -> None:
     print(f"站号: {df.station}, 线路: {df.line}")
     print(f"日期时间: {_format_timestamp(df)}")
     print(f"数据点数: {df.data_length}")
-    print(f"GPS频率: {df.gps_frequency}, GPS标志: {df.gps_flag}, 跳闸标志: {df.break_flag}")
+    print(f"GPS频率: {df.gps_frequency}, GPS同步: 是 (默认同步), 跳闸标志: {df.break_flag}")
     if df.data_length > 0:
         peak_a = max(abs(float(v)) for v in df.data_a[: df.data_length])
         peak_b = max(abs(float(v)) for v in df.data_b[: df.data_length])
@@ -128,23 +128,23 @@ def main() -> int:
     # 2. 运行单端测距/波头检测算法
     phase = _ask_phase()
     
-    # 采用默认配置 (1MHz采样率, 300km/ms波速)
+    # 默认配置: 1MHz 采样率, 299.79 km/ms (≈接近光速) 波速, 1000km 线路长度 (测试阶段)
     cfg = AnalyzerConfig(
         sampling_interval_ms=0.001, 
-        wave_speed_km_per_ms=299.79, 
-        line_length_km=300.0
+        wave_speed_km_per_ms=299.79,
+        line_length_km=1000.0
     )
     
-    print("\n🚀 正在运行多尺度小波变换波头检测...")
+    print("\n正在运行多尺度小波变换波头检测 (含预滤波)...")
     result = analyze_single_end(df, cfg, phase)
     
     if result:
-        print("\n✅ 波头检测成功！")
-        print(f"👉 检出相别: {result.phase.value}")
-        print(f"👉 突变点索引: {result.first_index}")
-        print(f"👉 相对到达时间: {result.first_time_ms:.6f} ms")
+        print("\n波头检测成功！")
+        print(f"  检出相别: {result.phase.value}")
+        print(f"  突变点索引: {result.first_index}")
+        print(f"  相对到达时间: {result.first_time_ms:.6f} ms")
     else:
-        print("\n❌ 波头检测失败：未能找到符合跨尺度校验的有效故障行波。")
+        print("\n波头检测失败：未能找到符合跨尺度校验的有效故障行波。")
 
     return 0
 
@@ -175,8 +175,8 @@ def run_gui() -> None:
     # 算法默认参数
     sampling_rate_khz: float = 1250.0  # 1MHz 
     time_window_us: float = 4000.0  
-    line_length_km: float = 300.0  
-    wave_speed_km_per_s: float = 299.79  
+    line_length_km: float = 1000.0       # 测试阶段默认 1000km
+    wave_speed_m_per_ms: float = 299_790.0  # 行波速度 (m/ms), 接近光速: 2.9979e8 m/s
 
     summary_a_label = None  
     summary_b_label = None  
@@ -214,7 +214,7 @@ def run_gui() -> None:
             f"{side} 端 | 站号: {df.station}, 线路: {df.line}",
             f"{side} 端 | 日期时间: {_format_timestamp(df)}",
             f"{side} 端 | 数据点数: {df.data_length}",
-            f"{side} 端 | GPS同步: {'是' if df.gps_flag == 1 else '否 (警告: 失步)'}",
+            f"{side} 端 | GPS同步: 是 (所有端默认同步)",
         ]
         if df.data_length > 0:
             peak_a = max(abs(float(v)) for v in df.data_a[: df.data_length])
@@ -258,31 +258,27 @@ def run_gui() -> None:
             info_label.text = "解析完成。请点击“运行”执行测距算法。"
 
     def on_save_params() -> None:
-        nonlocal sampling_rate_khz, time_window_us, line_length_km, wave_speed_km_per_s
+        nonlocal sampling_rate_khz, time_window_us, line_length_km, wave_speed_m_per_ms
         try:
             if sr_input and sr_input.value: sampling_rate_khz = float(sr_input.value)
             if tw_input and tw_input.value: time_window_us = float(tw_input.value)
             if L_input and L_input.value: line_length_km = float(L_input.value)
-            if v_input and v_input.value: wave_speed_km_per_s = float(v_input.value)
+            if v_input and v_input.value: wave_speed_m_per_ms = float(v_input.value)
             ui.notify("算法参数已更新。", color="positive")
         except ValueError:
             ui.notify("参数格式错误。", color="negative")
 
     def on_run_click() -> None:
-        """运行双端测距 (包含绝对时间对齐的核心修正)"""
-        nonlocal df_a_cache, df_b_cache, line_length_km, wave_speed_km_per_s, sampling_rate_khz, info_label
+        """运行双端测距 (GPS 默认同步, 含小波预滤波 + 绝对时间对齐)"""
+        nonlocal df_a_cache, df_b_cache, line_length_km, wave_speed_m_per_ms, sampling_rate_khz, info_label
 
         if df_a_cache is None or df_b_cache is None:
             ui.notify("请先完成解析，再运行双端测距。", color="warning")
             return
-            
-        # 风险提示：如果 GPS 未同步，双端算出来的数据没有意义
-        if df_a_cache.gps_flag != 1 or df_b_cache.gps_flag != 1:
-            ui.notify("警告：检测到文件 GPS 未同步，测距结果可能存在偏差！", color="warning")
 
-        # 1. 配置准备
+        # 1. 配置准备 (m/ms → km/ms: ÷1000)
         sampling_interval_ms = 1.0 / float(sampling_rate_khz) if sampling_rate_khz > 0 else 0.001
-        wave_speed_km_per_ms = wave_speed_km_per_s / 1000.0
+        wave_speed_km_per_ms = wave_speed_m_per_ms / 1000.0
 
         cfg = AnalyzerConfig(
             sampling_interval_ms=sampling_interval_ms,
@@ -290,7 +286,7 @@ def run_gui() -> None:
             line_length_km=line_length_km,
         )
 
-        # 2. 对两端分别做波头检测
+        # 2. 对两端分别做波头检测 (内含小波多尺度滤波预处理)
         res_a = analyze_single_end(df_a_cache, cfg, Phase.A)
         res_b = analyze_single_end(df_b_cache, cfg, Phase.A)
 
@@ -304,15 +300,10 @@ def run_gui() -> None:
         dt_a = _header_to_datetime(df_a_cache)
         dt_b = _header_to_datetime(df_b_cache)
         
-        # 计算头文件的绝对时间差 (毫秒)
         header_diff_ms = (dt_a - dt_b).total_seconds() * 1000.0
-        # 计算波头的相对时间差 (毫秒)
         relative_diff_ms = res_a.first_time_ms - res_b.first_time_ms
-        
-        # 全局真正的时差: tA - tB
         total_delta_ms = header_diff_ms + relative_diff_ms
 
-        # 巧妙复用您的 double_end_by_times 函数：直接将差值传入 tA，让 tB = 0
         result = double_end_by_times(
             line_length_km=line_length_km,
             wave_speed_km_per_ms=wave_speed_km_per_ms,
@@ -323,11 +314,12 @@ def run_gui() -> None:
         later_side = "A" if total_delta_ms >= 0 else "B"
 
         summary_lines = [
-            "双端行波测距计算完毕:",
+            "双端行波测距计算完毕 (小波预滤波 + 跨尺度校验):",
             f"- 线路全长 L = {line_length_km:.3f} km",
-            f"- 行波速度 v = {wave_speed_km_per_s:.1f} km/s",
-            f"- A 端到达时刻 (绝对参考): {_format_timestamp(df_a_cache)} + {res_a.first_time_ms:.4f} ms",
-            f"- B 端到达时刻 (绝对参考): {_format_timestamp(df_b_cache)} + {res_b.first_time_ms:.4f} ms",
+            f"- 行波速度 v = {wave_speed_m_per_ms:.2f} m/ms",
+            f"- A 端到达时刻: {_format_timestamp(df_a_cache)} + {res_a.first_time_ms:.4f} ms",
+            f"- B 端到达时刻: {_format_timestamp(df_b_cache)} + {res_b.first_time_ms:.4f} ms",
+            f"- A 端波头索引: {res_a.first_index},  B 端波头索引: {res_b.first_index}",
             f"- 全网同步时间差 (tA - tB) = {total_delta_ms:.6f} ms (靠后端为 {later_side} 端)",
             "--------------------------------------------------",
             f"最终定位结果: 距 A 端 {result.distance_from_a:.3f} km, 距 B 端 {result.distance_from_b:.3f} km"
@@ -358,7 +350,7 @@ def run_gui() -> None:
                 sr_input = ui.number("采样率 (kHz)", value=sampling_rate_khz, format="%.1f").classes("w-32")
                 tw_input = ui.number("时间窗 (µs)", value=time_window_us, format="%.1f").classes("w-32")
                 L_input = ui.number("线路全长 L (km)", value=line_length_km, format="%.1f").classes("w-40")
-                v_input = ui.number("行波速度 v (km/s)", value=wave_speed_km_per_s, format="%.1f").classes("w-48")
+                v_input = ui.number("行波速度 v (m/ms)", value=wave_speed_m_per_ms, format="%.0f").classes("w-48")
                 ui.button("保存参数", on_click=on_save_params).props("color=primary flat rounded")
 
             with ui.row().classes("items-center q-gutter-md q-mt-sm"):
