@@ -15,7 +15,6 @@ from double_end_fault_location import (
 )
 from nicegui import ui, events
 
-
 def _micro_to_int(micro_raw: str) -> int:
     """将头字段中的“微秒字符串”转换为整数微秒, 保留 6 位精度."""
     s = micro_raw.strip()
