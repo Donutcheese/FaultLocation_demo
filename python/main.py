@@ -372,7 +372,7 @@ def run_gui() -> None:
                 "padding: 16px; border-radius: 8px; width: 100%; font-family: monospace; color: #111827;"
             )
 
-    ui.run(title="智能电网双端行波测距", reload=False, port=8002)
+    ui.run(title="双端行波测距", reload=False, port=8002)
 
 
 if __name__ == "__main__":

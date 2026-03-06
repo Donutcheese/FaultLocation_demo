@@ -106,3 +106,33 @@ java -cp src Main
 
 可以通过修改 `Main` 中的 `TARGET_FILE_NAME`，来指定不同的 `.all` 文件进行解析与测距。
 
+---
+
+## Python 环境（跨机器通用）
+
+项目中的 `python/` 目录为 Python 实现，使用**项目内虚拟环境**，不依赖本机特定路径，任意电脑克隆后按下面步骤即可运行。
+
+### 1. 创建虚拟环境（在项目根目录执行）
+
+**Windows (PowerShell / CMD):**
+```powershell
+cd d:\FaultLocation_demo
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r python/requirements.txt
+```
+
+**Linux / macOS:**
+```bash
+cd /path/to/FaultLocation_demo
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r python/requirements.txt
+```
+
+### 2. 使用
+
+- 每次开发前先激活虚拟环境（见上面 `activate` 命令）。
+- 在 VS Code / Cursor 中：打开项目后选择解释器为「`.venv`」（`Python: Select Interpreter`），即可使用项目内环境。
+- 本仓库已配置为使用项目根目录下的 `.venv`（见 `pyrightconfig.json`），**不要**提交 `.venv` 目录，每台机器在本地执行上述命令即可。
+

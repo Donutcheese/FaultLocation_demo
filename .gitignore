@@ -33,3 +33,9 @@ bin/
 *.class
 *.pyc
 python/**/__pycache__/
+
+### Python virtual environment (每台机器本地创建，不提交) ###
+.venv/
+venv/
+env/
+.env/

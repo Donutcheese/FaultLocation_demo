@@ -4,7 +4,7 @@ import numpy as np
 
 from current_data import CurrentData
 
-MAX_DATA_LENGTH = 512 * 1024  # 与 C/Java 实现一致
+MAX_DATA_LENGTH = 512 * 1024  
 
 def _parse_string_field(buf: memoryview, start: int, end: int) -> str:
     start = max(0, start)
